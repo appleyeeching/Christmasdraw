@@ -1,2 +1,0 @@
-# Christmasdraw
-Draw people
