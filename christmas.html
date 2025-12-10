@@ -1,0 +1,146 @@
+﻿<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>接力抽人名</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f7f6; max-width: 600px; margin: 0 auto; }
+        .box { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        input, textarea { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button.copy-btn { background: #28a745; margin-top: 5px; }
+        .hidden { display: none; }
+        .result { font-size: 24px; color: #28a745; font-weight: bold; text-align: center; margin: 20px 0; padding: 20px; border: 2px dashed #28a745; background: #e8f5e9; }
+        .share-area { background: #fff3cd; padding: 15px; border-radius: 5px; border: 1px solid #ffeeba; margin-top: 20px; }
+        h1 { color: #333; text-align: center; }
+        .status { color: #666; text-align: center; font-size: 14px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h1>🏃‍♂️ 接力抽人名</h1>
+    <div id="statusInfo" class="status"></div>
+
+    <!-- 1. 初始化 (只有第一次見到) -->
+    <div id="initSection" class="hidden">
+        <label>輸入所有人名單 (每行一個):</label>
+        <textarea id="inputList" rows="6" placeholder="張三&#10;李四&#10;王五"></textarea>
+        <button onclick="startFirstRound()">🚀 開始第一輪</button>
+    </div>
+
+    <!-- 2. 抽籤區 -->
+    <div id="drawSection" class="hidden">
+        <label>你的名字 (排除自己):</label>
+        <input type="text" id="myName" placeholder="例如：張三">
+        <label>伴侶名字 (選填，排除伴侶):</label>
+        <input type="text" id="partnerName" placeholder="例如：李四">
+        
+        <button onclick="draw()">🎲 抽籤</button>
+    </div>
+
+    <!-- 3. 結果與分享區 -->
+    <div id="resultSection" class="hidden">
+        <div class="result" id="drawResult"></div>
+        
+        <div class="share-area">
+            <p><strong>👇 將呢條 Link Send 俾下一個人：</strong></p>
+            <p style="font-size:12px; color:#666;">(下個人打開會見到剩低嘅名單)</p>
+            <input type="text" id="nextLink" readonly>
+            <button class="copy-btn" onclick="copyLink()">📋 複製連結 Send 俾人</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 壓縮名單成 URL 字串 (簡單 Base64 編碼避免亂碼)
+    function encodeList(list) {
+        return encodeURIComponent(JSON.stringify(list));
+    }
+
+    function decodeList(str) {
+        try {
+            return JSON.parse(decodeURIComponent(str));
+        } catch (e) { return []; }
+    }
+
+    // 程式啟動
+    const urlParams = new URLSearchParams(window.location.search);
+    const dataStr = urlParams.get('data');
+    let currentList = [];
+
+    if (!dataStr) {
+        // 無數據 = 第一個人
+        document.getElementById('initSection').classList.remove('hidden');
+    } else {
+        // 有數據 = 接力中
+        currentList = decodeList(dataStr);
+        if (currentList.length === 0) {
+            alert("名單已空！遊戲結束。");
+        } else {
+            document.getElementById('drawSection').classList.remove('hidden');
+            document.getElementById('statusInfo').innerText = `目前剩餘 ${currentList.length} 個名額未抽`;
+        }
+    }
+
+    // 第一個人設定名單
+    function startFirstRound() {
+        const text = document.getElementById('inputList').value.trim();
+        if (!text) return alert("請輸入名單");
+        
+        currentList = text.split('\n').map(n => n.trim()).filter(n => n);
+        
+        // 即刻轉去抽籤畫面 (模擬 reload)
+        const nextUrl = window.location.pathname + '?data=' + encodeList(currentList);
+        window.history.replaceState({}, '', nextUrl);
+        location.reload();
+    }
+
+    // 抽籤邏輯
+    function draw() {
+        const myName = document.getElementById('myName').value.trim();
+        const partnerName = document.getElementById('partnerName').value.trim();
+
+        if (!myName) return alert("請輸入你名字");
+
+        // 排除自己同伴侶
+        let candidates = currentList.filter(n => n !== myName && n !== partnerName);
+
+        if (candidates.length === 0) return alert("無人可抽！(可能剩返你自己或伴侶)");
+
+        // 抽一個
+        const randIndex = Math.floor(Math.random() * candidates.length);
+        const selected = candidates[randIndex];
+
+        // 從總名單移除被抽中者 (重要：係從 currentList 移除)
+        // 注意：這裡我們移除「被抽中者」，而不是「抽籤者」
+        // 接力邏輯：被抽中的人，下個就唔應該再被抽中
+        const indexInMain = currentList.indexOf(selected);
+        if (indexInMain > -1) {
+            currentList.splice(indexInMain, 1);
+        }
+
+        // 顯示結果
+        document.getElementById('drawSection').classList.add('hidden');
+        document.getElementById('resultSection').classList.remove('hidden');
+        document.getElementById('drawResult').innerText = "🎉 你抽中咗：" + selected;
+
+        // 生成下一條 Link
+        const baseUrl = window.location.href.split('?')[0];
+        const newDataStr = encodeList(currentList);
+        const nextLink = `${baseUrl}?data=${newDataStr}`;
+        
+        document.getElementById('nextLink').value = nextLink;
+    }
+
+    function copyLink() {
+        const linkInput = document.getElementById('nextLink');
+        linkInput.select();
+        document.execCommand('copy');
+        alert("已複製連結！Send 俾下一個玩啦！");
+    }
+</script>
+
+</body>
+</html>
